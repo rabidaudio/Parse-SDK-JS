@@ -1,5 +1,5 @@
 /**
- * Parse JavaScript SDK v1.6.5
+ * Parse JavaScript SDK v1.6.6
  *
  * The source tree of this library can be found at
  *   https://github.com/ParsePlatform/Parse-SDK-JS
@@ -207,7 +207,7 @@ var config = {
   IS_NODE: typeof process !== 'undefined' && !!process.versions && !!process.versions.node,
   REQUEST_ATTEMPT_LIMIT: 5,
   SERVER_URL: 'https://api.parse.com',
-  VERSION: '1.6.5',
+  VERSION: '1.6.6',
   APPLICATION_ID: null,
   JAVASCRIPT_KEY: null,
   MASTER_KEY: null,
@@ -3160,13 +3160,14 @@ var ParseObject = (function () {
   }, {
     key: 'toJSON',
     value: function toJSON() {
+      var seenEntry = this.id ? this.className + ':' + this.id : this;
       var json = {};
       var attrs = this.attributes;
       for (var attr in attrs) {
         if ((attr === 'createdAt' || attr === 'updatedAt') && attrs[attr].toJSON) {
           json[attr] = attrs[attr].toJSON();
         } else {
-          json[attr] = (0, _encode2['default'])(attrs[attr], false, true);
+          json[attr] = (0, _encode2['default'])(attrs[attr], false, false, [seenEntry]);
         }
       }
       var pending = this._getPendingOps();
@@ -8994,72 +8995,62 @@ var _ParseRelation2 = _interopRequireDefault(_ParseRelation);
 
 var toString = Object.prototype.toString;
 
-function encode(_x, _x2, _x3, _x4) {
-  var _again = true;
-
-  _function: while (_again) {
-    var value = _x,
-        disallowObjects = _x2,
-        forcePointers = _x3,
-        seen = _x4;
-    _again = false;
-
-    if (value instanceof _ParseObject2['default']) {
-      if (disallowObjects) {
-        throw new Error('Parse Objects not allowed here');
-      }
-      if (forcePointers || !seen || seen.indexOf(value) > -1 || value.dirty() || _Object$keys(value._getServerData()).length < 1) {
-        return value.toPointer();
-      }
-      seen = seen.concat(value);
-      var json = value._toFullJSON(seen);
-      _x = json;
-      _x2 = disallowObjects;
-      _x3 = forcePointers;
-      _x4 = seen;
-      _again = true;
-      json = undefined;
-      continue _function;
+function encode(value, disallowObjects, forcePointers, seen) {
+  if (value instanceof _ParseObject2['default']) {
+    if (disallowObjects) {
+      throw new Error('Parse Objects not allowed here');
     }
-    if (value instanceof _ParseOp.Op || value instanceof _ParseACL2['default'] || value instanceof _ParseGeoPoint2['default'] || value instanceof _ParseRelation2['default']) {
-      return value.toJSON();
+    var seenEntry = value.id ? value.className + ':' + value.id : value;
+    if (forcePointers || !seen || seen.indexOf(seenEntry) > -1 || value.dirty() || _Object$keys(value._getServerData()).length < 1) {
+      return value.toPointer();
     }
-    if (value instanceof _ParseFile2['default']) {
-      if (!value.url()) {
-        throw new Error('Tried to encode an unsaved file.');
-      }
-      return value.toJSON();
+    seen = seen.concat(seenEntry);
+    var json = encode(value.attributes, disallowObjects, forcePointers, seen);
+    json.className = value.className;
+    json.__type = 'Object';
+    if (value.id) {
+      json.objectId = value.id;
     }
-    if (toString.call(value) === '[object Date]') {
-      if (isNaN(value)) {
-        throw new Error('Tried to encode an invalid date.');
-      }
-      return { __type: 'Date', iso: value.toJSON() };
-    }
-    if (toString.call(value) === '[object RegExp]' && typeof value.source === 'string') {
-      return value.source;
-    }
-
-    if (Array.isArray(value)) {
-      return value.map(function (v) {
-        return encode(v, disallowObjects, forcePointers, seen);
-      });
-    }
-
-    if (value && typeof value === 'object') {
-      var output = {};
-      for (var k in value) {
-        output[k] = encode(value[k], disallowObjects, forcePointers, seen);
-      }
-      return output;
-    }
-
-    return value;
+    return json;
   }
+  if (value instanceof _ParseOp.Op || value instanceof _ParseACL2['default'] || value instanceof _ParseGeoPoint2['default'] || value instanceof _ParseRelation2['default']) {
+    return value.toJSON();
+  }
+  if (value instanceof _ParseFile2['default']) {
+    if (!value.url()) {
+      throw new Error('Tried to encode an unsaved file.');
+    }
+    return value.toJSON();
+  }
+  if (toString.call(value) === '[object Date]') {
+    if (isNaN(value)) {
+      throw new Error('Tried to encode an invalid date.');
+    }
+    return { __type: 'Date', iso: value.toJSON() };
+  }
+  if (toString.call(value) === '[object RegExp]' && typeof value.source === 'string') {
+    return value.source;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(function (v) {
+      return encode(v, disallowObjects, forcePointers, seen);
+    });
+  }
+
+  if (value && typeof value === 'object') {
+    var output = {};
+    for (var k in value) {
+      output[k] = encode(value[k], disallowObjects, forcePointers, seen);
+    }
+    return output;
+  }
+
+  return value;
 }
 
-exports['default'] = function (value, disallowObjects, forcePointers) {
-  return encode(value, !!disallowObjects, !!forcePointers, []);
+exports['default'] = function (value, disallowObjects, forcePointers, seen) {
+  return encode(value, !!disallowObjects, !!forcePointers, seen || []);
 };
 
 module.exports = exports['default'];
